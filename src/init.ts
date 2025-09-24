@@ -3,12 +3,12 @@ import { CronJob } from "cron";
 export const initServer = async () => {
   console.log("Running migrations.");
   const job = new CronJob(
-    "*/8 * * * * *", // cronTime
+    "*/10 * * * * *",
     function () {
-      console.log("You will see this message every 8 seconds");
-    }, // onTick
-    null, // onComplete
-    true, // start
-    "Europe/Rome" // timeZone
+      console.log("You will see this message every 10 seconds");
+    },
+    null,
+    true,
+    "Europe/Rome"
   );
 };
