@@ -1,66 +1,167 @@
-// Reference: https://github.com/TanStack/router/blob/49e5fad4ea698b72794ad68b881630e94407a8d3/e2e/react-start/custom-basepath/express-server.ts
-import fastify from "fastify";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import middie from "@fastify/middie";
 import fastifyStatic from "@fastify/static";
-import { toNodeHandler } from "srvx/node";
-import path from "path";
+import Fastify from "fastify";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEVELOPMENT = process.env.NODE_ENV === "development";
-const PORT = Number.parseInt(process.env.PORT ?? "3000");
+const PORT = parseInt(process.env.PORT ?? "3000");
 
-const app = fastify();
-
-if (DEVELOPMENT) {
-  const viteDevServer = await import("vite").then((vite) =>
-    vite.createServer({
-      server: { middlewareMode: true },
-    })
-  );
-
-  app.addHook("onRequest", async (req, res) => {
-    // Vite Dev Server uses its own request/response objects, so we call its middleware directly
-    await new Promise((resolve) => {
-      viteDevServer.middlewares(req.raw, res.raw, () => {
-        resolve(null);
-      });
-    });
-  });
-
-  app.addHook("onRequest", async (req, res) => {
-    try {
-      const { default: serverEntry } = await viteDevServer.ssrLoadModule(
-        "./src/server.ts"
-      );
-      const handler = toNodeHandler(serverEntry.fetch);
-      await handler(req.raw, res.raw);
-    } catch (error) {
-      if (typeof error === "object" && error instanceof Error) {
-        viteDevServer.ssrFixStacktrace(error);
-      }
-      res.send(error);
-    }
-  });
-} else {
-  app.register(fastifyStatic, {
-    root: path.join(process.cwd(), "dist/client"),
-    prefix: "/",
-  });
-
-  // @ts-ignore This file is created by `pnpm build`
-  const { default: handler } = await import("./dist/server/server.js");
-  const nodeHandler = toNodeHandler(handler.fetch);
-  app.addHook("onRequest", async (req, res) => {
-    try {
-      await nodeHandler(req.raw, res.raw);
-    } catch (error) {
-      res.send(error);
-    }
-  });
+async function applyDatabaseMigrations() {
+  // const { db } = await import("./src/server/db");
+  // console.log("Running migrations...");
+  // const { migrate } = await import("drizzle-orm/postgres-js/migrator");
+  // await migrate(db, { migrationsFolder: "./.drizzle" });
+  // console.log("Migrations completed successfully.");
 }
 
-app.listen({ port: PORT }, (err, address) => {
-  if (err) {
-    app.log.error(err);
+async function createViteMiddleware() {
+  const { createServer } = await import("vite");
+
+  const vite = await createServer({
+    server: { middlewareMode: true },
+    appType: "custom",
+  });
+
+  return vite;
+}
+
+function convertRequest(fastifyRequest: any): Request {
+  const url = new URL(
+    fastifyRequest.url,
+    `http://${fastifyRequest.headers.host}`
+  );
+
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(fastifyRequest.headers)) {
+    if (typeof value === "string") {
+      headers.set(key, value);
+    } else if (Array.isArray(value)) {
+      for (const v of value) {
+        headers.append(key, v);
+      }
+    }
+  }
+
+  const init: RequestInit = {
+    method: fastifyRequest.method,
+    headers,
+  };
+
+  if (
+    fastifyRequest.body &&
+    (fastifyRequest.method === "POST" ||
+      fastifyRequest.method === "PUT" ||
+      fastifyRequest.method === "PATCH")
+  ) {
+    init.body = JSON.stringify(fastifyRequest.body);
+  }
+
+  return new Request(url.toString(), init);
+}
+
+async function convertResponse(response: Response, fastifyReply: any) {
+  fastifyReply.status(response.status);
+
+  response.headers.forEach((value, key) => {
+    fastifyReply.header(key, value);
+  });
+
+  if (response.body) {
+    const body = await response.arrayBuffer();
+    return fastifyReply.send(Buffer.from(body));
+  }
+
+  return fastifyReply.send();
+}
+
+async function startDevelopmentServer() {
+  const fastify = Fastify({
+    logger: {
+      level: "warn",
+    },
+  });
+
+  await fastify.register(middie);
+
+  const vite = await createViteMiddleware();
+  fastify.use(vite.middlewares);
+
+  fastify.all("*", async (request, reply) => {
+    try {
+      const webRequest = convertRequest(request);
+
+      const { default: serverEntry } = await vite.ssrLoadModule(
+        "./src/server.ts"
+      );
+      const response = await serverEntry.fetch(webRequest);
+
+      return convertResponse(response, reply);
+    } catch (error) {
+      fastify.log.error("SSR error:");
+      fastify.log.error(error);
+      reply.status(500).send("Internal Server Error");
+    }
+  });
+
+  try {
+    await fastify.listen({ port: PORT, host: "0.0.0.0" });
+    console.log(`Development server is running on http://localhost:${PORT}`);
+  } catch (err) {
+    fastify.log.error(err);
     process.exit(1);
   }
-  console.log(`Server is running on ${address}`);
+}
+
+async function startProductionServer() {
+  const fastify = Fastify({
+    logger: {
+      level: "warn",
+    },
+  });
+
+  await fastify.register(fastifyStatic, {
+    root: join(__dirname, "dist/client"),
+    prefix: "/",
+    wildcard: false,
+  });
+
+  const { default: handler } = await import("./dist/server/server.js");
+
+  fastify.setNotFoundHandler(async (request, reply) => {
+    try {
+      const webRequest = convertRequest(request);
+      const response = await handler.fetch(webRequest);
+
+      return convertResponse(response, reply);
+    } catch (error) {
+      fastify.log.error("Production server error:");
+      fastify.log.error(error);
+      reply.status(500).send("Internal Server Error");
+    }
+  });
+
+  try {
+    await fastify.listen({ port: PORT, host: "0.0.0.0" });
+    console.log(`Production server is running on http://localhost:${PORT}`);
+  } catch (err) {
+    fastify.log.error(err);
+    process.exit(1);
+  }
+}
+
+async function main() {
+  await applyDatabaseMigrations();
+
+  if (DEVELOPMENT) {
+    await startDevelopmentServer();
+  } else {
+    await startProductionServer();
+  }
+}
+
+main().catch((err) => {
+  console.error("Failed to start server:", err);
+  process.exit(1);
 });
