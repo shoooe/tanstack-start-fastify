@@ -5,7 +5,7 @@ import { toNodeHandler } from "srvx/node";
 import path from "path";
 
 const DEVELOPMENT = process.env.NODE_ENV === "development";
-const PORT = Number.parseInt(process.env.PORT || "3000");
+const PORT = Number.parseInt(process.env.PORT ?? "3000");
 
 const app = fastify();
 
@@ -18,7 +18,7 @@ if (DEVELOPMENT) {
 
   app.addHook("onRequest", async (req, res) => {
     // Vite Dev Server uses its own request/response objects, so we call its middleware directly
-    await new Promise((resolve, reject) => {
+    await new Promise((resolve) => {
       viteDevServer.middlewares(req.raw, res.raw, () => {
         resolve(null);
       });
@@ -40,14 +40,14 @@ if (DEVELOPMENT) {
     }
   });
 } else {
+  app.register(fastifyStatic, {
+    root: path.join(process.cwd(), "dist/client"),
+    prefix: "/",
+  });
+
   // @ts-ignore This file is created by `pnpm build`
   const { default: handler } = await import("./dist/server/server.js");
   const nodeHandler = toNodeHandler(handler.fetch);
-
-  app.register(fastifyStatic, {
-    root: path.join(process.cwd(), "dist/client"),
-  });
-
   app.addHook("onRequest", async (req, res) => {
     try {
       await nodeHandler(req.raw, res.raw);
