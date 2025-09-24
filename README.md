@@ -3,6 +3,12 @@
 This is a proof of concept of Tanstack Start running on Fastify.
 It's based on the `start-basic-react-query` starter ([source](https://github.com/TanStack/router/tree/main/examples/react/start-basic-react-query)).
 
+Things that seem to work both in dev and production:
+ - ✅ Tanstack Query
+ - ✅ SSR
+ - ✅ Static files
+ - ✅ Init function (with cron jobs)
+
 ### Structure
 
 It only adds 2 files:
