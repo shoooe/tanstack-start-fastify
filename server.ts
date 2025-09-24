@@ -2,19 +2,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import middie from "@fastify/middie";
 import fastifyStatic from "@fastify/static";
+import { toNodeHandler } from "srvx/node";
 import Fastify from "fastify";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEVELOPMENT = process.env.NODE_ENV === "development";
 const PORT = parseInt(process.env.PORT ?? "3000");
-
-async function applyDatabaseMigrations() {
-  // const { db } = await import("./src/server/db");
-  // console.log("Running migrations...");
-  // const { migrate } = await import("drizzle-orm/postgres-js/migrator");
-  // await migrate(db, { migrationsFolder: "./.drizzle" });
-  // console.log("Migrations completed successfully.");
-}
 
 async function createViteMiddleware() {
   const { createServer } = await import("vite");
@@ -25,55 +18,6 @@ async function createViteMiddleware() {
   });
 
   return vite;
-}
-
-function convertRequest(fastifyRequest: any): Request {
-  const url = new URL(
-    fastifyRequest.url,
-    `http://${fastifyRequest.headers.host}`
-  );
-
-  const headers = new Headers();
-  for (const [key, value] of Object.entries(fastifyRequest.headers)) {
-    if (typeof value === "string") {
-      headers.set(key, value);
-    } else if (Array.isArray(value)) {
-      for (const v of value) {
-        headers.append(key, v);
-      }
-    }
-  }
-
-  const init: RequestInit = {
-    method: fastifyRequest.method,
-    headers,
-  };
-
-  if (
-    fastifyRequest.body &&
-    (fastifyRequest.method === "POST" ||
-      fastifyRequest.method === "PUT" ||
-      fastifyRequest.method === "PATCH")
-  ) {
-    init.body = JSON.stringify(fastifyRequest.body);
-  }
-
-  return new Request(url.toString(), init);
-}
-
-async function convertResponse(response: Response, fastifyReply: any) {
-  fastifyReply.status(response.status);
-
-  response.headers.forEach((value, key) => {
-    fastifyReply.header(key, value);
-  });
-
-  if (response.body) {
-    const body = await response.arrayBuffer();
-    return fastifyReply.send(Buffer.from(body));
-  }
-
-  return fastifyReply.send();
 }
 
 async function startDevelopmentServer() {
@@ -88,24 +32,15 @@ async function startDevelopmentServer() {
   const vite = await createViteMiddleware();
   fastify.use(vite.middlewares);
 
+  const { default: devHandler } = await vite.ssrLoadModule("./src/server.ts");
+
   fastify.all("*", async (request, reply) => {
-    try {
-      const webRequest = convertRequest(request);
-
-      const { default: serverEntry } = await vite.ssrLoadModule(
-        "./src/server.ts"
-      );
-      const response = await serverEntry.fetch(webRequest);
-
-      return convertResponse(response, reply);
-    } catch (error) {
-      fastify.log.error("SSR error:");
-      fastify.log.error(error);
-      reply.status(500).send("Internal Server Error");
-    }
+    const handler = toNodeHandler(devHandler.fetch);
+    await handler(request.raw, reply.raw);
   });
 
   try {
+    await devHandler.init();
     await fastify.listen({ port: PORT, host: "0.0.0.0" });
     console.log(`Development server is running on http://localhost:${PORT}`);
   } catch (err) {
@@ -127,14 +62,13 @@ async function startProductionServer() {
     wildcard: false,
   });
 
+  // @ts-ignore This file is created by `pnpm build`
   const { default: handler } = await import("./dist/server/server.js");
+  const nodeHandler = toNodeHandler(handler.fetch);
 
   fastify.setNotFoundHandler(async (request, reply) => {
     try {
-      const webRequest = convertRequest(request);
-      const response = await handler.fetch(webRequest);
-
-      return convertResponse(response, reply);
+      await nodeHandler(request.raw, reply.raw);
     } catch (error) {
       fastify.log.error("Production server error:");
       fastify.log.error(error);
@@ -143,6 +77,7 @@ async function startProductionServer() {
   });
 
   try {
+    await handler.init();
     await fastify.listen({ port: PORT, host: "0.0.0.0" });
     console.log(`Production server is running on http://localhost:${PORT}`);
   } catch (err) {
@@ -152,8 +87,6 @@ async function startProductionServer() {
 }
 
 async function main() {
-  await applyDatabaseMigrations();
-
   if (DEVELOPMENT) {
     await startDevelopmentServer();
   } else {
