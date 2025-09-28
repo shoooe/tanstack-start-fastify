@@ -6,6 +6,6 @@ export const useSignIn = () => {
     mutationFn: signIn,
   });
 
-  const run = () => mutateAsync({ data: { name: "John" } });
+  const run = () => mutateAsync({});
   return [run, { isLoading: isPending }] as const;
 };
