@@ -1,11 +1,11 @@
 import { useMutation } from "@tanstack/react-query";
-import { signIn } from "~/utils/post";
+import { someMutation } from "~/functions/some-mutation";
 
-export const useSignIn = () => {
-  const { mutateAsync, isPending } = useMutation({
-    mutationFn: signIn,
+export const useSomeMutation = () => {
+  const { mutateAsync, isPending, data } = useMutation({
+    mutationFn: someMutation,
   });
 
-  const run = () => mutateAsync({});
-  return [run, { isLoading: isPending }] as const;
+  const run = (name: string) => mutateAsync({ data: { name } });
+  return [run, { isLoading: isPending, data }] as const;
 };

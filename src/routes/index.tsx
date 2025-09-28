@@ -1,16 +1,25 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useSignIn } from "~/hooks/use-sign-in";
+import { useSomeMutation } from "~/hooks/use-sign-in";
+
 export const Route = createFileRoute("/")({
   component: Home,
 });
 
 function Home() {
-  const [signIn, { isLoading }] = useSignIn();
+  const [someMutation, { isLoading, data }] = useSomeMutation();
   return (
     <div className="p-2">
-      <h3>Welcome Home!!!</h3>
-      <div>Loading {isLoading ? "true" : "false"}</div>
-      <button onClick={() => signIn()}>Run POST request</button>
+      <h1>Homepage</h1>
+      <div>
+        <div>Loading: {isLoading ? "✅" : "❌"}</div>
+        <div>Response: {!!data ? data : "-"}</div>
+        <button
+          className="border rounded px-2 py-1"
+          onClick={() => someMutation("John")}
+        >
+          Run mutation
+        </button>
+      </div>
     </div>
   );
 }
