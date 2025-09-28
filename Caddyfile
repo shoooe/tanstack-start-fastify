@@ -1,0 +1,24 @@
+{
+    debug
+}
+
+:80 {
+    encode gzip zstd
+
+    request_body {
+        max_size 0
+    }
+
+    reverse_proxy app:3001 {
+        # Forward original headers
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up Content-Type {header.Content-Type}
+
+        # Explicitly allow WebSocket and SSE upgrades
+        header_up Connection {header.Connection}
+        header_up Upgrade {header.Upgrade}
+    }
+}
