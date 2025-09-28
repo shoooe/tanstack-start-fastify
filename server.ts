@@ -28,14 +28,13 @@ async function startDevelopmentServer() {
   });
 
   await fastify.register(middie);
-
   const vite = await createViteMiddleware();
   fastify.use(vite.middlewares);
 
   const { default: devHandler } = await vite.ssrLoadModule("./src/server.ts");
+  const handler = toNodeHandler(devHandler.fetch);
 
   fastify.all("*", async (request, reply) => {
-    const handler = toNodeHandler(devHandler.fetch);
     await handler(request.raw, reply.raw);
   });
 
@@ -63,10 +62,19 @@ async function startProductionServer() {
 
   // @ts-ignore This file is created by `pnpm build`
   const { default: prodHandler } = await import("./dist/server/server.js");
+  const handler = toNodeHandler(prodHandler.fetch);
 
   fastify.all("*", async (request, reply) => {
-    const handler = toNodeHandler(prodHandler.fetch);
-    await handler(request.raw, reply.raw);
+    try {
+      console.info("START REQUEST ---------");
+      console.info("Headers", request.headers);
+      await handler(request.raw, reply.raw);
+      console.info("END REQUEST ---------");
+    } catch (err) {
+      console.error(err);
+    } finally {
+      console.info("END REQUEST ---------");
+    }
   });
 
   try {
