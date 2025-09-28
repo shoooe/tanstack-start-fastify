@@ -12,6 +12,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { DefaultCatchBoundary } from "~/components/default-catch-boundary";
 import { NotFound } from "~/components/not-found";
 import appCss from "~/styles/app.css?url";
+import { AppLayout } from "~/components/layout";
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
@@ -78,7 +79,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        <main>{children}</main>
+        <AppLayout>{children}</AppLayout>
         <TanStackRouterDevtools position="bottom-right" />
         <ReactQueryDevtools buttonPosition="bottom-left" />
         <Scripts />

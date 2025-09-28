@@ -41,7 +41,7 @@ async function startDevelopmentServer() {
   try {
     await devHandler.init();
     await fastify.listen({ port: PORT, host: "0.0.0.0" });
-    console.log(`Development server is running on http://localhost:${PORT}`);
+    console.log(`[dev] ⚡️ Server is running on http://localhost:${PORT}`);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
@@ -65,22 +65,15 @@ async function startProductionServer() {
   const handler = toNodeHandler(prodHandler.fetch);
 
   fastify.all("*", async (request, reply) => {
-    try {
-      console.info("START REQUEST ---------");
-      console.info("Headers", request.headers);
-      await handler(request.raw, reply.raw);
-      console.info("END REQUEST ---------");
-    } catch (err) {
-      console.error(err);
-    } finally {
-      console.info("END REQUEST ---------");
-    }
+    console.info("START REQUEST ---------"); // @todo: remove
+    console.info("Headers", request.headers); // @todo: remove
+    await handler(request.raw, reply.raw);
   });
 
   try {
     await prodHandler.init();
     await fastify.listen({ port: PORT, host: "0.0.0.0" });
-    console.log(`Production server is running on http://localhost:${PORT}`);
+    console.log(`[prod] ⚡️ Server is running on http://localhost:${PORT}`);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
