@@ -51,9 +51,8 @@ async function startDevelopmentServer() {
 
 async function startProductionServer() {
   const fastify = Fastify({
-    logger: {
-      level: "warn",
-    },
+    logger: true,
+    trustProxy: true,
   });
 
   await fastify.register(fastifyStatic, {
@@ -63,21 +62,15 @@ async function startProductionServer() {
   });
 
   // @ts-ignore This file is created by `pnpm build`
-  const { default: handler } = await import("./dist/server/server.js");
-  const nodeHandler = toNodeHandler(handler.fetch);
+  const { default: prodHandler } = await import("./dist/server/server.js");
 
-  fastify.setNotFoundHandler(async (request, reply) => {
-    try {
-      await nodeHandler(request.raw, reply.raw);
-    } catch (error) {
-      fastify.log.error("Production server error:");
-      fastify.log.error(error);
-      reply.status(500).send("Internal Server Error");
-    }
+  fastify.all("*", async (request, reply) => {
+    const handler = toNodeHandler(prodHandler.fetch);
+    await handler(request.raw, reply.raw);
   });
 
   try {
-    await handler.init();
+    await prodHandler.init();
     await fastify.listen({ port: PORT, host: "0.0.0.0" });
     console.log(`Production server is running on http://localhost:${PORT}`);
   } catch (err) {
